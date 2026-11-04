@@ -13,7 +13,19 @@ import {
   Menu,
   X,
 } from "lucide-react";
-import { configured, getProfile, loadData, rpc, supabase } from "./api";
+import {
+  configured,
+  getProfile,
+  loadData,
+  rpc,
+  supabase,
+  initialAuthLink,
+} from "./api";
+import {
+  authErrorMessage,
+  normalizeEmail,
+  validateNewPassword,
+} from "./auth-utils";
 import { demoData, demoRpc, demoUsers } from "./demo";
 import type { Data, Page, Profile, RpcArgs } from "./types";
 import { Context } from "./context";
@@ -39,13 +51,14 @@ export default function App() {
   const [page, setPage] = useState<Page>("Availability");
   const [busy, setBusy] = useState(false);
   const [boot, setBoot] = useState(configured);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initialAuthLink.error);
   const [message, setMessage] = useState("");
   const [mobile, setMobile] = useState(false);
   const [passwordMode, setPasswordMode] = useState(
-    new URLSearchParams(window.location.hash.slice(1)).get("type") === "invite",
+    initialAuthLink.passwordSetup,
   );
   const [authEmail, setAuthEmail] = useState("");
+  const [emailCooldown, setEmailCooldown] = useState(0);
   const mounted = useRef(true);
   const dataRef = useRef(data);
   dataRef.current = data;
@@ -74,7 +87,8 @@ export default function App() {
   useEffect(() => {
     mounted.current = true;
     if (!supabase) return;
-    void supabase.auth.getSession().then(({ data }) => {
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (error) setError(authErrorMessage(error));
       if (data.session) void refresh();
       else setBoot(false);
     });
@@ -82,6 +96,7 @@ export default function App() {
       (event, session) => {
         if (event === "PASSWORD_RECOVERY") setPasswordMode(true);
         if (event === "SIGNED_OUT") {
+          setPasswordMode(false);
           setUser(null);
           setData(null);
         } else if (session) setTimeout(() => void refresh(), 0);
@@ -97,6 +112,14 @@ export default function App() {
     const t = setTimeout(() => setMessage(""), 7000);
     return () => clearTimeout(t);
   }, [message]);
+  useEffect(() => {
+    if (emailCooldown <= 0) return;
+    const timeout = setTimeout(
+      () => setEmailCooldown((n) => Math.max(0, n - 1)),
+      1000,
+    );
+    return () => clearTimeout(timeout);
+  }, [emailCooldown]);
   async function call<T = unknown>(
     name: string,
     args: RpcArgs = {},
@@ -145,6 +168,17 @@ export default function App() {
     const f = new FormData(e.currentTarget);
     try {
       if (passwordMode) {
+        const password = String(f.get("password"));
+        const validation = validateNewPassword(
+          password,
+          String(f.get("confirmPassword")),
+        );
+        if (validation) throw new Error(validation);
+        const { data: sessionData } = await supabase!.auth.getSession();
+        if (!sessionData.session)
+          throw new Error(
+            "Open a fresh invitation or password-reset link before setting a password.",
+          );
         const { error } = await supabase!.auth.updateUser({
           password: String(f.get("password")),
         });
@@ -154,40 +188,54 @@ export default function App() {
         await refresh();
       } else {
         const { error } = await supabase!.auth.signInWithPassword({
-          email: authEmail,
+          email: normalizeEmail(authEmail),
           password: String(f.get("password")),
         });
         if (error) throw error;
         await refresh();
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Sign-in failed.");
+      setError(authErrorMessage(e));
     } finally {
       setBusy(false);
     }
   }
-  async function magic() {
-    if (!authEmail) {
+  async function requestEmail(kind: "signin" | "reset") {
+    const email = normalizeEmail(authEmail);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setError("Enter your work email first.");
       return;
     }
+    if (busy || emailCooldown > 0) return;
     setBusy(true);
-    const { error } = await supabase!.auth.signInWithOtp({
-      email: authEmail,
-      options: {
-        shouldCreateUser: false,
-        emailRedirectTo: window.location.origin + window.location.pathname,
-      },
-    });
-    if (error) setError(error.message);
-    else
+    setError("");
+    setMessage("");
+    try {
+      const redirectTo = window.location.origin + window.location.pathname;
+      const result =
+        kind === "reset"
+          ? await supabase!.auth.resetPasswordForEmail(email, { redirectTo })
+          : await supabase!.auth.signInWithOtp({
+              email,
+              options: { shouldCreateUser: false, emailRedirectTo: redirectTo },
+            });
+      if (result.error) throw result.error;
       notify(
-        "If your account is invited, a sign-in link will arrive by email.",
+        kind === "reset"
+          ? "If this email has an account, a password-reset link has been requested. Open the newest email to set your password."
+          : "If this email has an account, a sign-in link has been requested. Open the newest email; links work only once.",
       );
-    setBusy(false);
+      setEmailCooldown(60);
+    } catch (e) {
+      setError(authErrorMessage(e));
+      if ((e as { status?: number })?.status === 429) setEmailCooldown(60);
+    } finally {
+      setBusy(false);
+    }
   }
   async function signout() {
     if (supabase && !demo) await supabase.auth.signOut();
+    setPasswordMode(false);
     setUser(null);
     setData(null);
     setDemo(false);
@@ -253,6 +301,17 @@ export default function App() {
                   required
                 />
               </Field>
+              {passwordMode && (
+                <Field label="Confirm new password">
+                  <input
+                    name="confirmPassword"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    minLength={12}
+                  />
+                </Field>
+              )}
               <button disabled={busy}>
                 {passwordMode ? "Save password" : "Sign in"}
               </button>
@@ -260,11 +319,27 @@ export default function App() {
                 <button
                   type="button"
                   className="secondary"
-                  onClick={() => void magic()}
-                  disabled={busy}
+                  onClick={() => void requestEmail("signin")}
+                  disabled={busy || emailCooldown > 0}
                 >
                   Email me a sign-in link
                 </button>
+              )}
+              {!passwordMode && (
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => void requestEmail("reset")}
+                  disabled={busy || emailCooldown > 0}
+                >
+                  Reset password
+                </button>
+              )}
+              {emailCooldown > 0 && (
+                <p className="muted" role="status">
+                  Check your inbox before requesting another email. Retry
+                  available in {emailCooldown}s.
+                </p>
               )}
             </form>
           )}

@@ -1,5 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Data, Profile, RpcArgs } from "./types";
+import { authLinkState } from "./auth-utils";
+// Capture invitation/recovery intent before Auth consumes and clears the URL.
+export const initialAuthLink = authLinkState(window.location.hash);
 export const configured = Boolean(
   import.meta.env.VITE_SUPABASE_URL &&
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
