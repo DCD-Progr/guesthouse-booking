@@ -223,68 +223,63 @@ export function Requests({ approval = false }: { approval?: boolean }) {
               <p className="prewrap">{selected.decision_comment}</p>
             </>
           )}
-          {approval &&
-          selected.status === "pending" &&
-          selected.requester_id === user.id ? (
-            <p className="notice">You cannot decide your own request.</p>
-          ) : (
-            approval &&
-            selected.status === "pending" && (
-              <>
-                <hr />
-                {selected.request_type === "accommodation" && (
-                  <Field label="Available room for the entire stay">
-                    <select
-                      value={room}
-                      onChange={(e) => setRoom(e.target.value)}
-                      required
-                    >
-                      <option value="">
-                        {!loaded
-                          ? "Loading rooms…"
-                          : rooms.length
-                            ? "Select a room"
-                            : "No rooms available"}
+          {approval && selected.status === "pending" && (
+            <>
+              <hr />
+              {selected.request_type === "accommodation" && (
+                <Field label="Available room for the entire stay">
+                  <select
+                    value={room}
+                    onChange={(e) => setRoom(e.target.value)}
+                    required
+                  >
+                    <option value="">
+                      {!loaded
+                        ? "Loading rooms…"
+                        : rooms.length
+                          ? "Select a room"
+                          : "No rooms available"}
+                    </option>
+                    {rooms.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name} · {r.code}
                       </option>
-                      {rooms.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.name} · {r.code}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                )}
-                <Field label="Decision comments (required for rejection)">
-                  <textarea
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                    maxLength={2000}
-                  />
+                    ))}
+                  </select>
                 </Field>
-                <div className="actions">
-                  <button
-                    disabled={
-                      busy ||
-                      !loaded ||
-                      (selected.request_type === "accommodation" && !room)
-                    }
-                    onClick={() => void decide(true)}
-                  >
-                    Approve and confirm
-                  </button>
-                  <button
-                    className="danger"
-                    disabled={busy || !comment.trim()}
-                    onClick={() => void decide(false)}
-                  >
-                    Reject request
-                  </button>
-                </div>
-                <p className="muted">
-                  Availability is checked again when you confirm.
-                </p>
-              </>
-            )
+              )}
+              <Field label="Decision comments (required for rejection)">
+                <textarea
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  maxLength={2000}
+                />
+              </Field>
+              <div className="actions">
+                <button
+                  disabled={
+                    busy ||
+                    !loaded ||
+                    (selected.request_type === "accommodation" && !room)
+                  }
+                  onClick={() => void decide(true)}
+                >
+                  Approve and confirm
+                </button>
+                <button
+                  className="danger"
+                  disabled={
+                    busy || !comment.trim() || selected.requester_id === user.id
+                  }
+                  onClick={() => void decide(false)}
+                >
+                  Reject request
+                </button>
+              </div>
+              <p className="muted">
+                Availability is checked again when you confirm.
+              </p>
+            </>
           )}
           {!approval && ["pending", "confirmed"].includes(selected.status) && (
             <>

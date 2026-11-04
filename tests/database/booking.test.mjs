@@ -234,14 +234,33 @@ test("RLS isolates travelers and forbids direct approval, role and inventory wri
     /approver/,
   );
 });
-test("admin is not implicitly approver; own decisions forbidden; rejection needs reason", async () => {
+test("admin is not implicitly approver; designated approver can approve own requests; rejection needs reason", async () => {
   const q = await submit();
   await assert.rejects(
     as("admin", "select public.decide_request($1,true,$2)", [q, room]),
     /approver/,
   );
-  const own = await submit("approver");
-  await assert.rejects(approve(own), /own request/);
+  const own = await submit("approver", "2095-01-01", "2095-01-05");
+  await assert.rejects(
+    as(
+      "approver",
+      "select public.decide_request($1,false,null,'Own rejection')",
+      [own],
+    ),
+    /own request/,
+  );
+  await approve(own);
+  assert.equal(
+    (
+      await query("select status,decided_by from requests where id=$1", [own])
+    )[0].decided_by,
+    ids.approver,
+  );
+  await as(
+    "approver",
+    "select public.cancel_request($1,'Self-approval test complete')",
+    [own],
+  );
   await assert.rejects(
     as("approver", "select public.decide_request($1,false,null,'')", [q]),
     /reason/,

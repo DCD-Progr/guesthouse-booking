@@ -25,7 +25,7 @@ Checks:
 5. Invite the initial administrator through Supabase Auth. Then run the bootstrap SQL below with the exact Auth user ID and business name. This is the only manual admin bootstrap. Do not expose this SQL as a public endpoint.
 6. Deploy the `invite-staff` Edge Function using the CLI: `supabase functions deploy invite-staff`. It manually verifies user JWTs with Auth and checks current administrator authority. The deployed function defaults to the GitHub Pages origin and URL. To use a different host, configure function secrets `APP_ORIGIN` (origin only, e.g. `https://dcd-progr.github.io`) and `APP_URL` (complete application URL). Supabase supplies its runtime project URL and standard keys; alternatively set `SUPABASE_SECRET_KEY` and `SUPABASE_PUBLISHABLE_KEY` there. Privileged credentials stay only in the function environment. Never add them as `VITE_*` values.
 7. Add public repository Actions variables `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Only use the publishable key. Configure the same values in `.env.local` for local work. RLS and RPC authorization, not key secrecy, protect data.
-8. In the app, add real guesthouses and rooms. Invite staff, then select an active admin/approver as the single designated approver. The designated approver cannot decide their own request; another authorized person must be designated for their travel.
+8. In the app, add real guesthouses and rooms. Invite staff, then select an active admin/approver as the single designated approver. The designated approver may approve their own request. All availability checks and the decision audit trail still apply. Own requests can be cancelled rather than self-rejected.
 
 Bootstrap SQL, after replacing placeholders:
 
