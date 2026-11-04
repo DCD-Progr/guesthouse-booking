@@ -1,0 +1,466 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  BedDouble,
+  LayoutDashboard,
+  ClipboardList,
+  CalendarDays,
+  CheckCircle2,
+  Building2,
+  Users,
+  History,
+  LogOut,
+  RefreshCw,
+  Menu,
+  X,
+} from "lucide-react";
+import { configured, getProfile, loadData, rpc, supabase } from "./api";
+import { demoData, demoRpc, demoUsers } from "./demo";
+import type { Data, Page, Profile, RpcArgs } from "./types";
+import { Context } from "./context";
+import { Availability } from "./pages/Availability";
+import { Requests } from "./pages/Requests";
+import { Overview } from "./pages/Overview";
+import { Activity, Calendar, Inventory, Staff } from "./pages/Operations";
+import { Field } from "./components/UI";
+const icons = {
+  Overview: LayoutDashboard,
+  Availability: BedDouble,
+  "My requests": ClipboardList,
+  Approvals: CheckCircle2,
+  Calendar: CalendarDays,
+  Inventory: Building2,
+  Staff: Users,
+  Activity: History,
+};
+export default function App() {
+  const [demo, setDemo] = useState(false);
+  const [user, setUser] = useState<Profile | null>(null);
+  const [data, setData] = useState<Data | null>(null);
+  const [page, setPage] = useState<Page>("Availability");
+  const [busy, setBusy] = useState(false);
+  const [boot, setBoot] = useState(configured);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [mobile, setMobile] = useState(false);
+  const [passwordMode, setPasswordMode] = useState(
+    new URLSearchParams(window.location.hash.slice(1)).get("type") === "invite",
+  );
+  const [authEmail, setAuthEmail] = useState("");
+  const mounted = useRef(true);
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const requestLock = useRef(false);
+  const notify = useCallback((s: string) => {
+    setError("");
+    setMessage(s);
+  }, []);
+  const refresh = useCallback(async () => {
+    if (demo) return;
+    try {
+      const p = await getProfile();
+      const d = await loadData();
+      if (mounted.current) {
+        setUser(p);
+        setData(d);
+      }
+    } catch (e) {
+      setUser(null);
+      setData(null);
+      setError(e instanceof Error ? e.message : "Could not load your account.");
+    } finally {
+      setBoot(false);
+    }
+  }, [demo]);
+  useEffect(() => {
+    mounted.current = true;
+    if (!supabase) return;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (data.session) void refresh();
+      else setBoot(false);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (event === "PASSWORD_RECOVERY") setPasswordMode(true);
+        if (event === "SIGNED_OUT") {
+          setUser(null);
+          setData(null);
+        } else if (session) setTimeout(() => void refresh(), 0);
+      },
+    );
+    return () => {
+      mounted.current = false;
+      listener.subscription.unsubscribe();
+    };
+  }, [refresh]);
+  useEffect(() => {
+    if (!message) return;
+    const t = setTimeout(() => setMessage(""), 7000);
+    return () => clearTimeout(t);
+  }, [message]);
+  async function call<T = unknown>(
+    name: string,
+    args: RpcArgs = {},
+  ): Promise<T> {
+    if (requestLock.current)
+      throw new Error("An operation is already running.");
+    requestLock.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      let value: unknown;
+      if (demo) {
+        const r = demoRpc(dataRef.current!, user!, name, args);
+        value = r.value;
+        setData(r.data);
+        dataRef.current = r.data;
+        const p = r.data.profiles.find((p) => p.id === user!.id);
+        if (p) setUser(p);
+      } else if (name === "invite_staff") {
+        const r = await supabase!.functions.invoke("invite-staff", {
+          body: args,
+        });
+        if (r.error) throw new Error(r.error.message);
+        if (r.data?.error) throw new Error(r.data.error);
+        value = r.data;
+        await refresh();
+      } else {
+        value = await rpc(name, args);
+        await refresh();
+      }
+      return value as T;
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "The operation failed. Please retry.",
+      );
+      throw e;
+    } finally {
+      setBusy(false);
+      requestLock.current = false;
+    }
+  }
+  async function auth(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    const f = new FormData(e.currentTarget);
+    try {
+      if (passwordMode) {
+        const { error } = await supabase!.auth.updateUser({
+          password: String(f.get("password")),
+        });
+        if (error) throw error;
+        setPasswordMode(false);
+        notify("Password saved.");
+        await refresh();
+      } else {
+        const { error } = await supabase!.auth.signInWithPassword({
+          email: authEmail,
+          password: String(f.get("password")),
+        });
+        if (error) throw error;
+        await refresh();
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Sign-in failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function magic() {
+    if (!authEmail) {
+      setError("Enter your work email first.");
+      return;
+    }
+    setBusy(true);
+    const { error } = await supabase!.auth.signInWithOtp({
+      email: authEmail,
+      options: {
+        shouldCreateUser: false,
+        emailRedirectTo: window.location.origin + window.location.pathname,
+      },
+    });
+    if (error) setError(error.message);
+    else
+      notify(
+        "If your account is invited, a sign-in link will arrive by email.",
+      );
+    setBusy(false);
+  }
+  async function signout() {
+    if (supabase && !demo) await supabase.auth.signOut();
+    setUser(null);
+    setData(null);
+    setDemo(false);
+    setPage("Availability");
+  }
+  if (boot)
+    return (
+      <div className="auth-shell">
+        <p role="status">Loading your workspace…</p>
+      </div>
+    );
+  if (!user || !data || passwordMode)
+    return (
+      <div className="auth-shell">
+        <section className="auth-panel">
+          <div className="brand">
+            <BedDouble size={30} />
+            <strong>Guesthouse</strong>
+          </div>
+          <h1>
+            {passwordMode
+              ? "Set your password"
+              : configured
+                ? "Welcome back"
+                : "Your booking workspace"}
+          </h1>
+          <p>
+            {configured
+              ? "Staff accommodation, approvals and travel tracking."
+              : "The application is ready for database setup. Explore a sample workflow while live booking is being configured."}
+          </p>
+          {error && (
+            <div className="error" role="alert">
+              {error}
+            </div>
+          )}
+          {message && (
+            <div className="notice" role="status">
+              {message}
+            </div>
+          )}
+          {configured && (
+            <form onSubmit={auth}>
+              {!passwordMode && (
+                <Field label="Work email">
+                  <input
+                    autoComplete="username"
+                    type="email"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    required
+                  />
+                </Field>
+              )}
+              <Field label={passwordMode ? "New password" : "Password"}>
+                <input
+                  name="password"
+                  type="password"
+                  autoComplete={
+                    passwordMode ? "new-password" : "current-password"
+                  }
+                  minLength={passwordMode ? 12 : 1}
+                  required
+                />
+              </Field>
+              <button disabled={busy}>
+                {passwordMode ? "Save password" : "Sign in"}
+              </button>
+              {!passwordMode && (
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => void magic()}
+                  disabled={busy}
+                >
+                  Email me a sign-in link
+                </button>
+              )}
+            </form>
+          )}
+          {!configured && (
+            <p className="notice">
+              Live reservations and staff accounts require a connected Supabase
+              project. Sample data is fictional and resets when you leave.
+            </p>
+          )}
+          <button
+            className="secondary"
+            onClick={() => {
+              setDemo(true);
+              setData(demoData());
+              setUser(demoUsers[0]);
+              setPage("Availability");
+              setError("");
+              setBoot(false);
+            }}
+          >
+            Explore sample workspace
+          </button>
+          <p className="muted">
+            Access is by invitation. Contact your administrator for a staff
+            account.
+          </p>
+        </section>
+      </div>
+    );
+  const canApprove = data.approver_id === user.id;
+  const pages: Page[] = [
+    "Overview",
+    "Availability",
+    "My requests",
+    ...(canApprove ? ["Approvals" as Page] : []),
+    ...(canApprove || user.role === "admin" ? ["Calendar" as Page] : []),
+    ...(user.role === "admin" ? ["Inventory" as Page, "Staff" as Page] : []),
+    ...(canApprove || user.role === "admin" ? ["Activity" as Page] : []),
+  ];
+  const safePage = pages.includes(page) ? page : "Availability";
+  return (
+    <Context.Provider value={{ data, user, demo, busy, call, refresh, notify }}>
+      <div className="app-shell">
+        <aside className={mobile ? "sidebar open" : "sidebar"}>
+          <div className="brand">
+            <BedDouble size={27} />
+            <strong>Guesthouse</strong>
+          </div>
+          <nav aria-label="Main navigation">
+            {pages.map((p) => {
+              const Icon = icons[p];
+              return (
+                <button
+                  className={safePage === p ? "nav active" : "nav"}
+                  key={p}
+                  aria-label={p}
+                  onClick={() => {
+                    setPage(p);
+                    setMobile(false);
+                  }}
+                >
+                  <Icon size={21} />
+                  <span>{p}</span>
+                  {p === "Approvals" && (
+                    <b>
+                      {
+                        data.requests.filter((q) => q.status === "pending")
+                          .length
+                      }
+                    </b>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+          <div className="sidebar-footer">
+            <small>
+              {user.role === "admin"
+                ? "Administration"
+                : canApprove
+                  ? "Designated approver"
+                  : "Staff workspace"}
+            </small>
+            <button className="nav" onClick={() => void signout()}>
+              <LogOut size={18} /> {demo ? "Leave sample" : "Sign out"}
+            </button>
+          </div>
+        </aside>
+        {mobile && (
+          <button
+            className="mobile-scrim"
+            aria-label="Close navigation"
+            onClick={() => setMobile(false)}
+          />
+        )}
+        <div className="workspace">
+          <header>
+            <div className="breadcrumb">
+              <button
+                className="icon-button mobile-menu"
+                aria-label="Open navigation"
+                onClick={() => setMobile(!mobile)}
+              >
+                {mobile ? <X /> : <Menu />}
+              </button>
+              <Building2 size={19} />
+              <span>Accommodation</span>
+            </div>
+            <div className="account">
+              {demo && (
+                <select
+                  aria-label="Sample role"
+                  value={user.id}
+                  onChange={(e) => {
+                    setUser(
+                      data.profiles.find((u) => u.id === e.target.value)!,
+                    );
+                    setPage("Availability");
+                    setError("");
+                  }}
+                >
+                  {demoUsers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      Sample {p.role}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                className="icon-button"
+                aria-label="Refresh data"
+                disabled={busy || demo}
+                onClick={() => void refresh()}
+              >
+                <RefreshCw size={17} />
+              </button>
+              <span className="avatar">
+                {user.full_name
+                  .split(" ")
+                  .slice(0, 2)
+                  .map((s) => s[0])
+                  .join("")}
+              </span>
+              <span className="account-name">{user.full_name}</span>
+            </div>
+          </header>
+          {demo && (
+            <div className="demo-banner">
+              Sample workspace · Fictional data · Changes last only for this
+              session
+            </div>
+          )}
+          <main>
+            {error && (
+              <div className="error" role="alert">
+                <span>{error}</span>
+                <button
+                  className="icon-button"
+                  onClick={() => setError("")}
+                  aria-label="Dismiss error"
+                >
+                  <X size={17} />
+                </button>
+              </div>
+            )}
+            {message && (
+              <div className="notice" role="status">
+                {message}
+              </div>
+            )}
+            {safePage === "Overview" ? (
+              <Overview />
+            ) : safePage === "Availability" ? (
+              <Availability />
+            ) : safePage === "My requests" ? (
+              <Requests />
+            ) : safePage === "Approvals" ? (
+              <Requests approval />
+            ) : safePage === "Calendar" ? (
+              <Calendar />
+            ) : safePage === "Inventory" ? (
+              <Inventory />
+            ) : safePage === "Staff" ? (
+              <Staff />
+            ) : (
+              <Activity />
+            )}
+          </main>
+          <footer>
+            Staff accommodation workspace
+            <span>
+              {busy ? "Updating…" : demo ? "Sample data" : "Connected"}
+            </span>
+          </footer>
+        </div>
+      </div>
+    </Context.Provider>
+  );
+}
