@@ -188,6 +188,18 @@ export function demoRpc(
       throw new Error("Check your dates and purpose.");
     const existing = d.requests.find((q) => q.id === p.p_token);
     if (existing) return { data: d, value: existing.id };
+    if (
+      d.requests.some(
+        (q) =>
+          q.requester_id === user.id &&
+          ["pending", "confirmed"].includes(q.status) &&
+          q.id !== p.p_replaces &&
+          overlaps(q.start_date, q.end_date, s("p_start"), s("p_end")),
+      )
+    )
+      throw new Error(
+        "You already have a room or Break request overlapping these dates. Cancel it or submit a change request.",
+      );
     value = s("p_token");
     d.requests.push({
       id: String(value),
@@ -221,6 +233,19 @@ export function demoRpc(
       q.decision_comment = s("p_comment");
       log("rejected", q.id);
     } else {
+      if (
+        d.requests.some(
+          (x) =>
+            x.requester_id === q.requester_id &&
+            ["pending", "confirmed"].includes(x.status) &&
+            x.id !== q.id &&
+            x.id !== q.replaces_id &&
+            overlaps(x.start_date, x.end_date, q.start_date, q.end_date),
+        )
+      )
+        throw new Error(
+          "This traveler already has a room or Break request overlapping these dates. Resolve the conflicting request first.",
+        );
       const r = d.rooms.find((r) =>
         q.request_type === "break"
           ? r.unit_type === "break"

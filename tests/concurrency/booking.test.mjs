@@ -79,10 +79,18 @@ test(
       assert.equal(result[0].value.rows[0].id, result[1].value.rows[0].id);
       // Ten independent sessions compete for exactly one room.
       const competing = [];
-      for (let i = 0; i < 10; i++)
-        competing.push(
-          await submit(i % 2 ? user : other, "2099-01-01", "2099-01-05"),
+      for (let i = 0; i < 10; i++) {
+        const staffId = `00000000-0000-4000-9000-${String(i + 1).padStart(12, "0")}`;
+        await setup.query("insert into auth.users(id,email)values($1,$2)", [
+          staffId,
+          `race${i}@example.invalid`,
+        ]);
+        await setup.query(
+          "insert into profiles(id,email,full_name,role)values($1,$2,'Race staff','requester')",
+          [staffId, `race${i}@example.invalid`],
         );
+        competing.push(await submit(staffId, "2099-01-01", "2099-01-05"));
+      }
       const clients = await Promise.all(competing.map(() => client()));
       try {
         const outcomes = await Promise.allSettled(
@@ -139,6 +147,24 @@ test(
           ).rows[0].n,
         ),
         0,
+      );
+      const staffRace = await Promise.allSettled([
+        as(
+          a,
+          user,
+          "select submit_request('break',null,'2100-04-01','2100-04-05','','Rest','',gen_random_uuid(),null)",
+        ),
+        as(
+          b,
+          user,
+          "select submit_request('accommodation',$1,'2100-04-01','2100-04-05','','Travel','',gen_random_uuid(),null)",
+          [house],
+        ),
+      ]);
+      assert.equal(staffRace.filter((x) => x.status === "fulfilled").length, 1);
+      assert.match(
+        staffRace.find((x) => x.status === "rejected").reason.message,
+        /overlapping/,
       );
     } finally {
       await Promise.all([a.end(), b.end(), setup.end()]);
