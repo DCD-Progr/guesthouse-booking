@@ -801,12 +801,23 @@ test("overlap across guesthouses is prevented and explicit replacement remains p
 });
 test("approval rejects legacy conflicting requests without altering either request", async () => {
   const first = await submit("admin", "2100-03-01", "2100-03-05", "break");
-  const second = (
+  // Simulate a record imported before the guard existed, only in the isolated test database.
+  await query(
+    "alter table public.requests disable trigger staff_commitments_guard",
+  );
+  let second;
+  try {
+    second = (
+      await query(
+        "insert into requests(requester_id,request_type,start_date,end_date,purpose,client_token)values($1,'break','2100-03-02','2100-03-04','Legacy duplicate',gen_random_uuid())returning id",
+        [ids.admin],
+      )
+    )[0].id;
+  } finally {
     await query(
-      "insert into requests(requester_id,request_type,start_date,end_date,purpose,client_token)values($1,'break','2100-03-02','2100-03-04','Legacy duplicate',gen_random_uuid())returning id",
-      [ids.admin],
-    )
-  )[0].id;
+      "alter table public.requests enable trigger staff_commitments_guard",
+    );
+  }
   await assert.rejects(approve(first, null), /overlapping/);
   assert.equal(
     (await query("select status from requests where id=$1", [first]))[0].status,
@@ -814,4 +825,149 @@ test("approval rejects legacy conflicting requests without altering either reque
   );
   await as("admin", "select cancel_request($1,'Resolve duplicate')", [second]);
   await approve(first, null);
+});
+
+test("database trigger blocks overlapping raw writes without using the booking RPC", async () => {
+  const q = await submit("user", "2101-01-01", "2101-01-04");
+  await assert.rejects(
+    query(
+      "insert into requests(requester_id,request_type,start_date,end_date,purpose,client_token)values($1,'break','2101-01-02','2101-01-03','Bypass attempt',gen_random_uuid())",
+      [ids.user],
+    ),
+    /overlap/,
+  );
+  const adjacent = await submit("user", "2101-01-04", "2101-01-05", "break");
+  await approve(q, room);
+  await approve(adjacent, null);
+  await assert.rejects(
+    query("update requests set start_date='2101-01-02' where id=$1", [q]),
+    /immutable/,
+  );
+});
+test("commit guard rejects confirmed-without-allocation and allocation-without-slot", async () => {
+  const q = await submit("other", "2101-02-01", "2101-02-03");
+  await assert.rejects(
+    query("update requests set status='confirmed' where id=$1", [q]),
+    /requires an active allocation/,
+  );
+  assert.equal(
+    (await query("select status from requests where id=$1", [q]))[0].status,
+    "pending",
+  );
+  await exec("begin");
+  try {
+    await query(
+      "insert into room_allocations(request_id,room_id)values($1,$2)",
+      [q, room2],
+    );
+    await query("update requests set status='confirmed' where id=$1", [q]);
+    await assert.rejects(exec("commit"), /matching capacity slot/);
+  } finally {
+    await exec("rollback");
+  }
+  assert.equal(
+    (await query("select * from room_allocations where request_id=$1", [q]))
+      .length,
+    0,
+  );
+});
+test("commit guard rejects wrong-house allocations and altered or missing capacity slots", async () => {
+  const q = await submit("admin", "2101-03-01", "2101-03-04");
+  await approve(q, room2);
+  const allocation = (
+    await query("select id from room_allocations where request_id=$1", [q])
+  )[0].id;
+  await assert.rejects(
+    query("delete from occupancy_slots where allocation_id=$1", [allocation]),
+    /matching capacity slot/,
+  );
+  const foreignRoom = (
+    await query(
+      "select r.id from rooms r join guesthouses h on h.id=r.guesthouse_id where h.code='ORACLE' limit 1",
+    )
+  )[0].id;
+  await assert.rejects(
+    query("update room_allocations set room_id=$1 where id=$2", [
+      foreignRoom,
+      allocation,
+    ]),
+    /does not match/,
+  );
+  await assert.rejects(
+    query(
+      "update occupancy_slots set stay=daterange('2101-03-01','2101-03-02','[)') where allocation_id=$1",
+      [allocation],
+    ),
+    /matching capacity slot|does not match/,
+  );
+  assert.equal(
+    (
+      await query("select room_id from room_allocations where id=$1", [
+        allocation,
+      ])
+    )[0].room_id,
+    room2,
+  );
+});
+test("all internal security helpers, guards and operational writes are inaccessible to anonymous users", async () => {
+  const helpers = await query(
+    "select proname,has_function_privilege('authenticated',oid,'execute') staff,has_function_privilege('anon',oid,'execute') anon from pg_proc where pronamespace='public'::regnamespace and proname in ('booking_lock','require_role','log_event','room_free','guard_staff_commitments','guard_booking_integrity')",
+  );
+  assert.equal(helpers.length, 6);
+  assert.ok(helpers.every((h) => !h.staff && !h.anon));
+  for (const table of [
+    "profiles",
+    "settings",
+    "guesthouses",
+    "rooms",
+    "requests",
+    "room_allocations",
+    "room_blocks",
+    "occupancy_slots",
+    "activity_events",
+  ]) {
+    const r = await query(
+      "select has_table_privilege('authenticated',$1,'INSERT') i,has_table_privilege('authenticated',$1,'UPDATE') u,has_table_privilege('authenticated',$1,'DELETE') d,has_table_privilege('anon',$1,'SELECT') s",
+      ["public." + table],
+    );
+    assert.ok(
+      Object.values(r[0]).every((v) => v === false),
+      table,
+    );
+  }
+});
+
+test("a valid Auth identity without a provisioned active staff profile sees no app data", async () => {
+  const id = "00000000-0000-4000-8888-000000000001";
+  await query(
+    "insert into auth.users(id,email)values($1,'unprovisioned@example.invalid')",
+    [id],
+  );
+  await exec("begin");
+  try {
+    await query("select set_config('request.jwt.claim.sub',$1,true)", [id]);
+    await exec("set local role authenticated");
+    for (const table of [
+      "profiles",
+      "settings",
+      "guesthouses",
+      "rooms",
+      "requests",
+      "room_allocations",
+      "room_blocks",
+      "occupancy_slots",
+      "activity_events",
+    ])
+      assert.equal(
+        (await query("select * from public." + table)).length,
+        0,
+        table,
+      );
+    await assert.rejects(
+      query("select availability($1,'2103-01-01','2103-01-02')", [house]),
+      /active staff/,
+    );
+  } finally {
+    await exec("rollback");
+  }
 });

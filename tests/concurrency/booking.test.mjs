@@ -166,6 +166,32 @@ test(
         staffRace.find((x) => x.status === "rejected").reason.message,
         /overlapping/,
       );
+      // Privileged direct writes also obey the database guard, without the booking RPC.
+      async function rawPending(c, type) {
+        await c.query("begin");
+        try {
+          await c.query(
+            "insert into requests(requester_id,request_type,guesthouse_id,start_date,end_date,purpose,client_token)values($1,$2,$3,'2102-01-01','2102-01-05','Guard race',gen_random_uuid())",
+            [user, type, type === "break" ? null : house],
+          );
+          await c.query("commit");
+        } catch (e) {
+          await c.query("rollback");
+          throw e;
+        }
+      }
+      const rawResults = await Promise.allSettled([
+        rawPending(a, "break"),
+        rawPending(b, "accommodation"),
+      ]);
+      assert.equal(
+        rawResults.filter((x) => x.status === "fulfilled").length,
+        1,
+      );
+      assert.match(
+        rawResults.find((x) => x.status === "rejected").reason.message,
+        /overlap/,
+      );
     } finally {
       await Promise.all([a.end(), b.end(), setup.end()]);
     }
