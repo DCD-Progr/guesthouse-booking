@@ -212,8 +212,8 @@ export function demoRpc(
     const q = d.requests.find((q) => q.id === p.p_request);
     if (!q || q.status !== "pending")
       throw new Error("Request is no longer pending.");
-    if (q.requester_id === user.id)
-      throw new Error("You cannot decide your own request.");
+    if (q.requester_id === user.id && !p.p_approve)
+      throw new Error("You cannot reject your own request. Cancel it instead.");
     if (!p.p_approve) {
       if (!s("p_comment").trim())
         throw new Error("Give a reason for rejection.");
