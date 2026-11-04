@@ -191,6 +191,7 @@ test("designated approver can submit and approve their own accommodation", async
   await page.getByRole("button", { name: "Approve and confirm" }).click();
   await expect(page.getByRole("status")).toContainText("Booking confirmed");
   await nav(page, "My requests");
+  await page.getByLabel("Status", { exact: true }).selectOption("confirmed");
   await expect(
     page.getByRole("cell", { name: "confirmed", exact: true }),
   ).toBeVisible();
