@@ -1,5 +1,7 @@
 # Guesthouse booking
 
+[Open the application](https://dcd-progr.github.io/guesthouse-booking/) · [Setup and operations](docs/OPERATIONS.md)
+
 Staff accommodation and Break tracking for multiple guesthouses. Requesters select a guesthouse and dates, see availability for the full stay, and submit without choosing a room. The designated approver selects a room; PostgreSQL confirms the decision and reservation in one transaction.
 
 ## Application
@@ -13,7 +15,7 @@ Staff accommodation and Break tracking for multiple guesthouses. Requesters sele
 
 ## Stack
 
-React + TypeScript + Vite frontend, Supabase Auth/PostgreSQL/functions backend, GitHub Actions and GitHub Pages frontend deployment. Live service configuration is required; cloning the code does not provision Supabase or publish a site.
+React + TypeScript + Vite frontend, Supabase Auth/PostgreSQL/functions backend, GitHub Actions and GitHub Pages frontend deployment. The frontend is published and connected to the SI Supabase project. Initial staff accounts and production email delivery still require setup. Cloning the code does not provision another Supabase project or site.
 
 ```sh
 npm ci

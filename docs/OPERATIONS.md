@@ -2,7 +2,7 @@
 
 ## Current delivery boundary
 
-The repository contains the application, database migration, administrator invitation function, automated checks and a manual GitHub Pages deployment workflow. A Supabase production project, initial accounts, approved inventory and hosting entitlement must be configured before live use. Sample mode is fictional, volatile, explicitly labelled and never writes to Supabase.
+The repository contains the application, database migrations, administrator invitation function, automated checks and a manual GitHub Pages deployment workflow. The published app is https://dcd-progr.github.io/guesthouse-booking/. The SI Supabase project and GitHub Pages frontend are deployed. Initial accounts, approved inventory, production email delivery and pilot acceptance remain before operational use. Sample mode is fictional, volatile, explicitly labelled and never writes to Supabase.
 
 ## Local development
 
@@ -19,11 +19,11 @@ Checks:
 ## Create the live backend
 
 1. In an organisation-owned Supabase account, create a project in an approved region. Record ownership and billing. Do not put the database password or secret API key in this repository or the frontend.
-2. Apply `supabase/migrations/202611040001_booking.sql` through the Supabase SQL editor, or use the Supabase CLI to link the project and run `supabase db push`. This is a one-time initial migration. Back up before any later migration.
+2. Apply `supabase/migrations/20261104070728_initial_guesthouse_booking.sql` through the Supabase SQL editor, or use the Supabase CLI to link the project and run `supabase db push`. Apply the remaining migrations in filename order too. Migration filenames now match the live deployment history. This is a one-time initial setup. Back up before any later migration.
 3. In Auth settings, disable public signup. Set Site URL and allowed redirect URL to the exact application URL, including `/guesthouse-booking/` for a project Pages site. Avoid broad wildcard redirects in production.
 4. Configure production Auth SMTP and an authenticated sender domain. Supabase's development email service is not a substitute for production delivery. Test invitation and magic-link delivery with an approved test account before inviting staff. Set appropriate Auth email rate limits. No booking notification email service is implemented; users check in-app status.
 5. Invite the initial administrator through Supabase Auth. Then run the bootstrap SQL below with the exact Auth user ID and business name. This is the only manual admin bootstrap. Do not expose this SQL as a public endpoint.
-6. Deploy the `invite-staff` Edge Function using the CLI: `supabase functions deploy invite-staff`. It manually verifies user JWTs with Auth and checks current administrator authority. Configure function secrets `APP_ORIGIN` (origin only, e.g. `https://dcd-progr.github.io`) and `APP_URL` (complete application URL). Supabase supplies its runtime project URL and standard keys; alternatively set `SUPABASE_SECRET_KEY` and `SUPABASE_PUBLISHABLE_KEY` there. Privileged credentials stay only in the function environment. Never add them as `VITE_*` values.
+6. Deploy the `invite-staff` Edge Function using the CLI: `supabase functions deploy invite-staff`. It manually verifies user JWTs with Auth and checks current administrator authority. The deployed function defaults to the GitHub Pages origin and URL. To use a different host, configure function secrets `APP_ORIGIN` (origin only, e.g. `https://dcd-progr.github.io`) and `APP_URL` (complete application URL). Supabase supplies its runtime project URL and standard keys; alternatively set `SUPABASE_SECRET_KEY` and `SUPABASE_PUBLISHABLE_KEY` there. Privileged credentials stay only in the function environment. Never add them as `VITE_*` values.
 7. Add public repository Actions variables `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Only use the publishable key. Configure the same values in `.env.local` for local work. RLS and RPC authorization, not key secrecy, protect data.
 8. In the app, add real guesthouses and rooms. Invite staff, then select an active admin/approver as the single designated approver. The designated approver cannot decide their own request; another authorized person must be designated for their travel.
 
@@ -39,11 +39,11 @@ If an invitation email succeeds but profile provisioning fails, the user has no 
 
 ## GitHub Pages
 
-The repository stays private. Private-repository Pages requires an eligible GitHub plan; check Settings > Pages. If unavailable, choose another static hosting service or explicitly agree a visibility change. Do not silently make the repository public.
+The repository was made public with the owner's explicit approval. GitHub access review found zero collaborators; public visitors can read/fork source but cannot push changes to this repository. GitHub Pages is enabled with GitHub Actions and HTTPS. Keep privileged keys and staff/travel records out of the repository.
 
 Enable GitHub Actions as the Pages source. The `Deploy GitHub Pages` workflow is manual. Run it from `main` after merging and passing checks. `sample_only=true` publishes a clearly labelled sample workspace without live configuration. `sample_only=false` requires the public Supabase variables. The deployment artifact includes code and public configuration, never database contents.
 
-Use GitHub environment protection rules if deployment review is required. A private code repository does not automatically make the deployed website private; every data operation still requires authenticated authorization. Verify signed-out users cannot read data before launch.
+Use GitHub environment protection rules if deployment review is required. The public frontend and source contain no operational dataset; every data operation still requires authenticated authorization. Verify signed-out users cannot read data before launch.
 
 Reference: https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages
 

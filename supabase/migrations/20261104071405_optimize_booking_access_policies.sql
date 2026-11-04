@@ -1,0 +1,17 @@
+create schema if not exists extensions;
+alter extension btree_gist set schema extensions;
+create index if not exists events_actor on public.activity_events(actor_id);
+create index if not exists requests_decider on public.requests(decided_by);
+create index if not exists requests_guesthouse on public.requests(guesthouse_id);
+create index if not exists requests_replacement on public.requests(replaces_id);
+create index if not exists blocks_creator on public.room_blocks(created_by);
+create index if not exists settings_approver on public.settings(approver_id);
+alter policy profiles_read on public.profiles using((select public.my_role()) is not null and (id=(select auth.uid()) or (select public.my_role())='admin' or (select public.is_approver())));
+alter policy settings_read on public.settings using((select public.my_role()) is not null);
+alter policy houses_read on public.guesthouses using((select public.my_role()) is not null);
+alter policy rooms_read on public.rooms using((select public.my_role())='admin' or (select public.is_approver()) or exists(select 1 from public.room_allocations a join public.requests q on q.id=a.request_id where a.room_id=rooms.id and q.requester_id=(select auth.uid()) and (select public.my_role()) is not null));
+alter policy requests_read on public.requests using((select public.my_role()) is not null and (requester_id=(select auth.uid()) or (select public.my_role())='admin' or (select public.is_approver())));
+alter policy allocations_read on public.room_allocations using((select public.my_role()) is not null and exists(select 1 from public.requests q where q.id=request_id));
+alter policy blocks_read on public.room_blocks using((select public.my_role())='admin' or (select public.is_approver()));
+alter policy slots_read on public.occupancy_slots using((select public.my_role())='admin' or (select public.is_approver()));
+alter policy events_read on public.activity_events using((select public.my_role())='admin' or (select public.is_approver()) or ((select public.my_role()) is not null and request_id in (select id from public.requests where requester_id=(select auth.uid()))));

@@ -1,6 +1,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-const allowedOrigin = Deno.env.get("APP_ORIGIN") ?? "";
-const appUrl = Deno.env.get("APP_URL") ?? "";
+const allowedOrigin =
+  Deno.env.get("APP_ORIGIN") ?? "https://dcd-progr.github.io";
+const appUrl =
+  Deno.env.get("APP_URL") ?? "https://dcd-progr.github.io/guesthouse-booking/";
 const headers = {
   "Access-Control-Allow-Origin": allowedOrigin,
   "Access-Control-Allow-Headers":

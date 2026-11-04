@@ -1,6 +1,6 @@
 # Delivery status
 
-The application implementation from [PR #11](https://github.com/DCD-Progr/guesthouse-booking/pull/11) is merged into main. This is a tested implementation, not a launched production service.
+The application implementation from [PR #11](https://github.com/DCD-Progr/guesthouse-booking/pull/11) is merged into main. The frontend is now published at https://dcd-progr.github.io/guesthouse-booking/ and connected to the SI Supabase project. Initial staff/admin accounts, production Auth email delivery and operational pilot acceptance remain.
 
 ## Verified
 
@@ -19,11 +19,19 @@ The connected browser could not reach the local development server. Local Playwr
 
 The full availability concept and actual desktop screenshot were reviewed at the concept's 1487x1058 dimensions, with a 390px mobile review. Checked heading/copy hierarchy, white/slate/teal palette, sidebar and header geometry, search controls, result table, icons and three-step explanation. Native dialogs provide focus containment. Field labelling and mobile result layout were corrected during verification so the request action remains reachable. Intentional differences from concept: smaller operational typography, role-appropriate navigation, real runtime dates, sample identity/banner, Break action, and mobile stacked results. No decorative raster assets are shipped as functional UI.
 
-## Launch blockers and decisions
+## Deployment status
 
-- Supabase connection is available. It currently has no projects; the accessible organisation is SI. The owner must confirm which organisation should own the new project before creation. Region/cost must be recorded during provisioning.
-- GitHub Settings > Pages explicitly reports: 'Upgrade or make this repository public to enable Pages'. The repository remains private. Choose an eligible plan, explicitly authorize public source, or choose a different frontend host.
-- Configure backend, invitation function, Auth redirects/SMTP, public frontend configuration, initial admin, designated approver and real inventory.
-- Validate actual staff login/invitation delivery, deployed booking behavior and an isolated restore exercise before rollout.
+- SI project `guesthouse-booking` is active in eu-west-1 (Ireland).
+- All application tables have RLS. Initial schema, extension isolation and policy/index migrations are applied; filenames match live migration history.
+- The `invite-staff` Edge Function is active with explicit user JWT and admin authorization checks.
+- Hosted Auth Site URL and redirect allowlist point to the exact GitHub Pages URL. Public signup and anonymous sign-in are disabled.
+- Source was made public with the owner's explicit authorization. GitHub access review shows zero collaborators. Visitors may view/fork source but cannot push changes to the original repository.
+- GitHub Pages deployment [run](https://github.com/DCD-Progr/guesthouse-booking/actions/runs/41791280723) succeeded with live public connection values.
+- Published login page rendered without console warnings/errors. Anonymous table reads, booking RPC calls and unauthenticated invitation attempts all returned 401 permission/authentication errors.
+- The remaining 14 Supabase SECURITY DEFINER advisor warnings reflect the intentionally authorized RPC design; see [security review](SECURITY_NOTES.md).
 
-See [Operations](OPERATIONS.md) for exact setup and daily procedures. Deployment workflow is manual. No staff invitations or real traveler records have been created.
+## Remaining operational onboarding
+
+Obtain the intended initial administrator's work email before creating an account or sending an invitation. Then bootstrap the admin, designate the approver, configure/test production SMTP, load approved guesthouses/rooms/staff, and run one-guesthouse pilot and restore acceptance. No live traveler records or staff invitations have been created.
+
+See [Operations](OPERATIONS.md) for setup and daily procedures.
