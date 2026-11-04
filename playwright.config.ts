@@ -18,16 +18,30 @@ export default defineConfig({
         VITE_SUPABASE_PUBLISHABLE_KEY: "test-publishable-key",
       },
     },
+    {
+      command:
+        "npm run build && npm run preview -- --host 127.0.0.1 --port 4177",
+      url: "http://127.0.0.1:4177",
+      reuseExistingServer: false,
+    },
   ],
   projects: [
     {
+      name: "security",
+      testMatch: /security.spec.ts/,
+      use: {
+        baseURL: "http://127.0.0.1:4177",
+        viewport: { width: 1440, height: 960 },
+      },
+    },
+    {
       name: "desktop",
-      testIgnore: /auth.spec.ts/,
+      testIgnore: /auth.spec.ts|security.spec.ts/,
       use: { viewport: { width: 1440, height: 960 } },
     },
     {
       name: "mobile",
-      testIgnore: /auth.spec.ts/,
+      testIgnore: /auth.spec.ts|security.spec.ts/,
       use: { viewport: { width: 390, height: 844 } },
     },
     {
