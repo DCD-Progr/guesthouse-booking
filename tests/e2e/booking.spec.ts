@@ -160,3 +160,38 @@ test("search changes invalidate old results and mobile has no document overflow"
     ),
   ).toBe(true);
 });
+
+test("designated approver can submit and approve their own accommodation", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Explore sample workspace" }).click();
+  await page.getByLabel("Sample role").selectOption("approver");
+  await page
+    .getByRole("button", { name: "Check availability", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Request accommodation", exact: true })
+    .click();
+  await page
+    .getByLabel("Purpose", { exact: true })
+    .fill("Approver field visit");
+  await page
+    .getByRole("button", { name: "Submit request", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("Request submitted");
+  await nav(page, "Approvals");
+  await page.getByRole("button", { name: "View request" }).click();
+  await page
+    .getByLabel("Available room for the entire stay")
+    .selectOption("j0");
+  await expect(
+    page.getByRole("button", { name: "Reject request", exact: true }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Approve and confirm" }).click();
+  await expect(page.getByRole("status")).toContainText("Booking confirmed");
+  await nav(page, "My requests");
+  await expect(
+    page.getByRole("cell", { name: "confirmed", exact: true }),
+  ).toBeVisible();
+});

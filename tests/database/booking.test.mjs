@@ -256,6 +256,11 @@ test("admin is not implicitly approver; designated approver can approve own requ
     )[0].decided_by,
     ids.approver,
   );
+  await as(
+    "approver",
+    "select public.cancel_request($1,'Self-approval test complete')",
+    [own],
+  );
   await assert.rejects(
     as("approver", "select public.decide_request($1,false,null,'')", [q]),
     /reason/,
