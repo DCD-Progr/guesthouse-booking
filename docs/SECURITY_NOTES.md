@@ -1,6 +1,6 @@
 # Access model and deployment review
 
-The source repository is public by explicit owner instruction. GitHub access review found zero collaborators: public visitors may read/fork source but cannot push changes. Deployments are initiated through the owner-controlled manual workflow. No privileged keys or staff/travel records are present in the source.
+The source repository is public by explicit owner instruction. GitHub access review found zero collaborators: public visitors may read/fork source but cannot push changes. Deployments publish verified current main commits after Application checks succeeds; an owner-controlled manual workflow remains available. No privileged keys or staff/travel records are present in the source.
 
 Every operational table has RLS enabled. Anonymous users have no operational table grants or booking RPC execution rights. Authenticated table access is read-only and filtered by active profile/role. Writes use authorized database functions that validate current identity, role, request ownership and state. Roles cannot be chosen through signup or edited by requesters. Public self-signup and anonymous sign-in are disabled in the hosted Auth configuration.
 
