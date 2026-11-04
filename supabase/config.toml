@@ -1,8 +1,8 @@
 project_id = "guesthouse-booking"
 [auth]
 enable_signup = false
-site_url = "http://localhost:4173"
-additional_redirect_urls = ["http://localhost:4173"]
+site_url = "https://dcd-progr.github.io/guesthouse-booking/"
+additional_redirect_urls = ["https://dcd-progr.github.io/guesthouse-booking/"]
 [functions.invite-staff]
 # The function validates the user JWT through Auth and checks current admin authority.
 verify_jwt = false

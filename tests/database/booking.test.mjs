@@ -73,9 +73,11 @@ before(async () => {
   await exec(
     `create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key,email text);create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema public,auth to anon,authenticated;grant execute on function auth.uid() to authenticated;`,
   );
-  await exec(
-    await fs.readFile("supabase/migrations/202611040001_booking.sql", "utf8"),
-  );
+  for (const file of (await fs.readdir("supabase/migrations"))
+    .filter((f) => f.endsWith(".sql"))
+    .sort()) {
+    await exec(await fs.readFile("supabase/migrations/" + file, "utf8"));
+  }
   for (const [role, id] of Object.entries(ids)) {
     await query("insert into auth.users(id,email)values($1,$2)", [
       id,
