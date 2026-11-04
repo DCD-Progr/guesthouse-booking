@@ -196,3 +196,69 @@ test("designated approver can submit and approve their own accommodation", async
     page.getByRole("cell", { name: "confirmed", exact: true }),
   ).toBeVisible();
 });
+
+test("operational dashboard filters staff, guesthouses and dates without exposing it to requesters", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Explore sample workspace" }).click();
+  await page.getByLabel("Sample role").selectOption("admin");
+  await nav(page, "Overview");
+  await expect(
+    page.getByRole("heading", { name: "Operations overview" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Room status", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Select staff", { exact: true })
+    .selectOption("requester");
+  await expect(page.getByRole("table").first()).toContainText(
+    "Sample traveler",
+  );
+  await page.getByLabel("Guesthouse", { exact: true }).selectOption("juba");
+  await page.getByLabel("Dashboard date").fill("2090-01-01");
+  await expect(
+    page.getByRole("heading", { name: "Staff whereabouts" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.getByLabel("Sample role").selectOption("requester");
+  await nav(page, "Overview");
+  await expect(
+    page.getByRole("heading", { name: "Operations overview" }),
+  ).toHaveCount(0);
+  await expect(page.getByLabel("Select staff", { exact: true })).toHaveCount(0);
+});
+test("calendar displays traveler names and requests navigation resets the status filter", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Explore sample workspace" }).click();
+  await page
+    .getByRole("button", { name: "Check availability", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Request accommodation", exact: true })
+    .click();
+  await page.getByLabel("Purpose", { exact: true }).fill("Calendar name check");
+  await page
+    .getByRole("button", { name: "Submit request", exact: true })
+    .click();
+  await page.getByLabel("Sample role").selectOption("approver");
+  await nav(page, "Approvals");
+  await page.getByRole("button", { name: "View request" }).click();
+  await page
+    .getByLabel("Available room for the entire stay")
+    .selectOption("j0");
+  await page.getByRole("button", { name: "Approve and confirm" }).click();
+  await nav(page, "My requests");
+  await expect(page.getByLabel("Status", { exact: true })).toHaveValue("all");
+  await nav(page, "Calendar");
+  await expect(page.locator(".reserved-cell").first()).toContainText(
+    "Sample traveler",
+  );
+});

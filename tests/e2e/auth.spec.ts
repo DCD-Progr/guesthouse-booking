@@ -206,3 +206,99 @@ test("rate-limited email attempts show the cause and leave password sign in enab
   ).toBeDisabled();
   expect(calls.filter((c) => c.path === "/auth/v1/otp")).toHaveLength(1);
 });
+
+test("late refresh results cannot reopen the workspace after sign-out", async ({
+  page,
+}) => {
+  await mock(page);
+  let held: any;
+  let pause = false;
+  let release: () => void = () => {};
+  const gate = new Promise<void>((r) => (release = r));
+  await page.route(
+    "https://auth.example.invalid/rest/v1/settings*",
+    async (route) => {
+      if (pause) {
+        held = route;
+        await gate;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ approver_id: null }),
+      });
+    },
+  );
+  await page.goto("/");
+  await page.getByLabel("Work email", { exact: true }).fill(email);
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("fixture-password-123");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Room availability", exact: true }),
+  ).toBeVisible();
+  pause = true;
+  await page.getByRole("button", { name: "Refresh data", exact: true }).click();
+  await expect.poll(() => Boolean(held)).toBe(true);
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  release();
+  await expect(
+    page.getByRole("heading", { name: "Welcome back", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Room availability", exact: true }),
+  ).toHaveCount(0);
+});
+test("staff pagination loads beyond the first API page", async ({ page }) => {
+  await mock(page);
+  const offsets: number[] = [];
+  await page.route(
+    "https://auth.example.invalid/rest/v1/profiles*",
+    async (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.has("id")) {
+        await route.fallback();
+        return;
+      }
+      const offset = Number(url.searchParams.get("offset") ?? 0);
+      offsets.push(offset);
+      const profiles = Array.from(
+        { length: offset === 0 ? 500 : 1 },
+        (_, i) => ({
+          id: `fixture-${offset + i}`,
+          full_name: `Staff ${offset + i}`,
+          email: `staff${offset + i}@example.invalid`,
+          role: "requester",
+          active: true,
+          department: "",
+        }),
+      );
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(profiles),
+      });
+    },
+  );
+  await page.goto("/");
+  await page.getByLabel("Work email", { exact: true }).fill(email);
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("fixture-password-123");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Room availability", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Staff", exact: true })
+    .click();
+  await expect(
+    page.getByRole("cell", {
+      name: "Staff 500 staff500@example.invalid",
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(offsets).toContain(500);
+});

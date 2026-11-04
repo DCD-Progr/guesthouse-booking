@@ -1,4 +1,4 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 const allowedOrigin =
   Deno.env.get("APP_ORIGIN") ?? "https://dcd-progr.github.io";
 const appUrl =
@@ -48,6 +48,8 @@ Deno.serve(async (req) => {
   } catch {
     return response(400, { error: "Invalid request." });
   }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload))
+    return response(400, { error: "Invalid request." });
   const email = String(payload.email ?? "")
     .trim()
     .toLowerCase();

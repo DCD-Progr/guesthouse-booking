@@ -352,7 +352,11 @@ export function demoRpc(
       role: s("p_role"),
       active: Boolean(p.p_active),
     });
-    if (p.p_designate) d.approver_id = u.id;
+    if (p.p_designate) {
+      if (!u.active || !["admin", "approver"].includes(u.role))
+        throw new Error("Approver must be active and authorized.");
+      d.approver_id = u.id;
+    } else if (d.approver_id === u.id) d.approver_id = null;
     log("staff_updated", null);
   } else throw new Error("Unknown operation.");
   return { data: d, value };
