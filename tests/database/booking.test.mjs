@@ -235,7 +235,7 @@ test("RLS isolates travelers and forbids direct approval, role and inventory wri
   );
 });
 test("admin is not implicitly approver; designated approver can approve own requests; rejection needs reason", async () => {
-  const q = await submit();
+  const q = await submit("user", "2096-01-01", "2096-01-05");
   await assert.rejects(
     as("admin", "select public.decide_request($1,true,$2)", [q, room]),
     /approver/,
@@ -354,7 +354,7 @@ test("date, guesthouse and original-stay guards reject invalid mutations", async
     approve(q, "20000000-0000-4000-8000-999999999999"),
     /active room/,
   );
-  const b = await submit("user", "2090-07-01", "2090-07-04", "break");
+  const b = await submit("user", "2090-07-05", "2090-07-08", "break");
   await assert.rejects(
     submit("other", "2090-07-01", "2090-07-04", "accommodation", b),
     /unstarted/,
@@ -627,7 +627,7 @@ test("checked-in, checkout and no-show state transitions release capacity correc
     ).length,
     0,
   );
-  const no = await submit("user", date, end);
+  const no = await submit("other", date, end);
   await approve(no, room2);
   await as("admin", "select set_movement($1,'no_show')", [no]);
   assert.equal(
@@ -648,14 +648,14 @@ test("future check-in, no-show and Break completion are rejected", async () => {
       as("admin", "select set_movement($1,$2)", [q, m]),
       /within|transition/,
     );
-  const b = await submit("user", "2097-04-01", "2097-04-03", "break");
+  const b = await submit("other", "2097-04-01", "2097-04-03", "break");
   await approve(b, null);
   await assert.rejects(
     as("admin", "select set_movement($1,'break_completed')", [b]),
     /transition/,
   );
   await as("user", "select cancel_request($1,'Test cleanup')", [q]);
-  await as("user", "select cancel_request($1,'Test cleanup')", [b]);
+  await as("other", "select cancel_request($1,'Test cleanup')", [b]);
 });
 test("replacement rejection and duplicate change preserve original booking", async () => {
   const old = await submit("user", "2097-05-01", "2097-05-04");
@@ -747,4 +747,71 @@ test("all final allocations, slots and decisions satisfy integrity invariants", 
     "select q.id from requests q where status in ('confirmed','rejected') and (decided_at is null or decided_by is null)",
   ];
   for (const sql of checks) assert.equal((await query(sql)).length, 0, sql);
+});
+
+test("same staff cannot overlap rooms and Break in either direction, including pending requests", async () => {
+  const roomRequest = await submit("user", "2100-01-01", "2100-01-05");
+  await assert.rejects(
+    submit("user", "2100-01-02", "2100-01-04", "break"),
+    /overlapping/,
+  );
+  await assert.rejects(
+    submit("user", "2100-01-02", "2100-01-04"),
+    /overlapping/,
+  );
+  await approve(roomRequest, room);
+  await assert.rejects(
+    submit("user", "2100-01-04", "2100-01-06", "break"),
+    /overlapping/,
+  );
+  const adjacent = await submit("user", "2100-01-05", "2100-01-07", "break");
+  await approve(adjacent, null);
+  await assert.rejects(
+    submit("user", "2100-01-06", "2100-01-08"),
+    /overlapping/,
+  );
+  await as("user", "select cancel_request($1,'Change plans')", [roomRequest]);
+  await submit("user", "2100-01-01", "2100-01-05", "break");
+});
+test("overlap across guesthouses is prevented and explicit replacement remains possible", async () => {
+  const old = await submit("other", "2100-02-01", "2100-02-05");
+  await approve(old, room2);
+  const h = (await query("select id from guesthouses where code='ORACLE'"))[0]
+    .id;
+  await assert.rejects(
+    as(
+      "other",
+      "select submit_request('accommodation',$1,'2100-02-02','2100-02-04','','Test','',gen_random_uuid(),null)",
+      [h],
+    ),
+    /overlapping/,
+  );
+  const change = await submit(
+    "other",
+    "2100-02-02",
+    "2100-02-06",
+    "accommodation",
+    old,
+  );
+  await approve(change, room2);
+  assert.equal(
+    (await query("select status from requests where id=$1", [old]))[0].status,
+    "cancelled",
+  );
+});
+test("approval rejects legacy conflicting requests without altering either request", async () => {
+  const first = await submit("admin", "2100-03-01", "2100-03-05", "break");
+  const second = (
+    await query(
+      "insert into requests(requester_id,request_type,start_date,end_date,purpose,client_token)values($1,'break','2100-03-02','2100-03-04','Legacy duplicate',gen_random_uuid())returning id",
+      [ids.admin],
+    )
+  )[0].id;
+  await assert.rejects(approve(first, null), /overlapping/);
+  assert.equal(
+    (await query("select status from requests where id=$1", [first]))[0].status,
+    "pending",
+  );
+  await as("admin", "select cancel_request($1,'Resolve duplicate')", [second]);
+  await approve(first, null);
 });

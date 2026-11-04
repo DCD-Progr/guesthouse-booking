@@ -262,3 +262,29 @@ test("calendar displays traveler names and requests navigation resets the status
     "Sample traveler",
   );
 });
+
+test("staff cannot submit a Break overlapping a pending room request", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Explore sample workspace" }).click();
+  await page
+    .getByRole("button", { name: "Check availability", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Request accommodation", exact: true })
+    .click();
+  await page.getByLabel("Purpose", { exact: true }).fill("Room request");
+  await page
+    .getByRole("button", { name: "Submit request", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Request Break", exact: true })
+    .click();
+  await page.getByLabel("Purpose", { exact: true }).fill("Overlapping Break");
+  await page
+    .getByRole("button", { name: "Submit request", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText("overlapping");
+  await expect(page.getByRole("dialog")).toBeVisible();
+});
