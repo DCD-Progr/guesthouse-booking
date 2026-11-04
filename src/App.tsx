@@ -60,6 +60,7 @@ export default function App() {
   const [authEmail, setAuthEmail] = useState("");
   const [emailCooldown, setEmailCooldown] = useState(0);
   const mounted = useRef(true);
+  const refreshVersion = useRef(0);
   const dataRef = useRef(data);
   dataRef.current = data;
   const requestLock = useRef(false);
@@ -69,19 +70,21 @@ export default function App() {
   }, []);
   const refresh = useCallback(async () => {
     if (demo) return;
+    const version = ++refreshVersion.current;
     try {
       const p = await getProfile();
       const d = await loadData();
-      if (mounted.current) {
+      if (mounted.current && version === refreshVersion.current) {
         setUser(p);
         setData(d);
       }
     } catch (e) {
+      if (version !== refreshVersion.current) return;
       setUser(null);
       setData(null);
       setError(e instanceof Error ? e.message : "Could not load your account.");
     } finally {
-      setBoot(false);
+      if (version === refreshVersion.current) setBoot(false);
     }
   }, [demo]);
   useEffect(() => {
@@ -96,6 +99,7 @@ export default function App() {
       (event, session) => {
         if (event === "PASSWORD_RECOVERY") setPasswordMode(true);
         if (event === "SIGNED_OUT") {
+          refreshVersion.current++;
           setPasswordMode(false);
           setUser(null);
           setData(null);
@@ -104,6 +108,7 @@ export default function App() {
     );
     return () => {
       mounted.current = false;
+      refreshVersion.current++;
       listener.subscription.unsubscribe();
     };
   }, [refresh]);
@@ -234,6 +239,7 @@ export default function App() {
     }
   }
   async function signout() {
+    refreshVersion.current++;
     if (supabase && !demo) await supabase.auth.signOut();
     setPasswordMode(false);
     setUser(null);
@@ -352,6 +358,7 @@ export default function App() {
           <button
             className="secondary"
             onClick={() => {
+              refreshVersion.current++;
               setDemo(true);
               setData(demoData());
               setUser(demoUsers[0]);
@@ -515,9 +522,9 @@ export default function App() {
             ) : safePage === "Availability" ? (
               <Availability />
             ) : safePage === "My requests" ? (
-              <Requests />
+              <Requests key="my-requests" />
             ) : safePage === "Approvals" ? (
-              <Requests approval />
+              <Requests key="approvals" approval />
             ) : safePage === "Calendar" ? (
               <Calendar />
             ) : safePage === "Inventory" ? (

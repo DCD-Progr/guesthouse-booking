@@ -77,6 +77,69 @@ test(
       ]);
       assert.equal(result.filter((x) => x.status === "fulfilled").length, 2);
       assert.equal(result[0].value.rows[0].id, result[1].value.rows[0].id);
+      // Ten independent sessions compete for exactly one room.
+      const competing = [];
+      for (let i = 0; i < 10; i++)
+        competing.push(
+          await submit(i % 2 ? user : other, "2099-01-01", "2099-01-05"),
+        );
+      const clients = await Promise.all(competing.map(() => client()));
+      try {
+        const outcomes = await Promise.allSettled(
+          clients.map((c, i) =>
+            as(c, approver, "select decide_request($1,true,$2,'Stress test')", [
+              competing[i],
+              room,
+            ]),
+          ),
+        );
+        assert.equal(
+          outcomes.filter((x) => x.status === "fulfilled").length,
+          1,
+        );
+        assert.equal(
+          Number(
+            (
+              await setup.query(
+                "select count(*) n from occupancy_slots where room_id=$1 and stay && daterange('2099-01-01','2099-01-05','[)')",
+                [room],
+              )
+            ).rows[0].n,
+          ),
+          1,
+        );
+      } finally {
+        await Promise.all(clients.map((c) => c.end()));
+      }
+      const cancelRace = await submit(user, "2099-02-01", "2099-02-05");
+      await Promise.allSettled([
+        as(a, approver, "select decide_request($1,true,$2,'')", [
+          cancelRace,
+          room,
+        ]),
+        as(b, user, "select cancel_request($1,'Concurrent cancellation')", [
+          cancelRace,
+        ]),
+      ]);
+      assert.equal(
+        (
+          await setup.query("select status from requests where id=$1", [
+            cancelRace,
+          ])
+        ).rows[0].status,
+        "cancelled",
+      );
+      assert.equal(
+        Number(
+          (
+            await setup.query(
+              "select count(*) n from occupancy_slots s join room_allocations a on a.id=s.allocation_id where a.request_id=$1",
+              [cancelRace],
+            )
+          ).rows[0].n,
+        ),
+        0,
+      );
     } finally {
       await Promise.all([a.end(), b.end(), setup.end()]);
     }

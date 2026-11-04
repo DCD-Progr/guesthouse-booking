@@ -576,7 +576,12 @@ export function Calendar() {
                             : "No planned allocation"
                       }
                     >
-                      {block ? "Closed" : q ? "#" + q.reference : ""}
+                      {block
+                        ? "Closed"
+                        : q
+                          ? (data.profiles.find((p) => p.id === q.requester_id)
+                              ?.full_name ?? "Staff member")
+                          : ""}
                     </td>
                   );
                 })}

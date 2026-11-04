@@ -396,3 +396,355 @@ test("anonymous users cannot execute booking or read operational tables", async 
     await exec("rollback");
   }
 });
+
+test("all operational tables have RLS and all relationships are enforced", async () => {
+  const tables = await query(
+    "select relname,relrowsecurity from pg_class where relnamespace='public'::regnamespace and relkind='r'",
+  );
+  assert.equal(tables.length, 9);
+  assert.ok(tables.every((t) => t.relrowsecurity));
+  await assert.rejects(
+    query(
+      "insert into rooms(name,code,guesthouse_id) values('Orphan','ORPHAN',gen_random_uuid())",
+    ),
+    /foreign key/,
+  );
+  await assert.rejects(
+    query(
+      "insert into room_allocations(request_id,room_id)values(gen_random_uuid(),$1)",
+      [room],
+    ),
+    /foreign key/,
+  );
+  await assert.rejects(
+    query(
+      "insert into rooms(name,code,unit_type,mode)values('Another Break','SECOND_BREAK','break','unlimited')",
+    ),
+    /unique/,
+  );
+});
+test("every administrative RPC rejects requester and non-designated approver writes", async () => {
+  const calls = [
+    [
+      "save_guesthouse",
+      "select save_guesthouse(null,'Test','TEST','Test','Africa/Juba',true,'')",
+      [],
+    ],
+    [
+      "save_room",
+      "select save_room(null,$1,'Test','TEST','whole_room','',true)",
+      [house],
+    ],
+    [
+      "create_block",
+      "select create_block($1,'2098-01-01','2098-01-02','Test')",
+      [room],
+    ],
+    ["release_block", "select release_block(gen_random_uuid())", []],
+    [
+      "set_movement",
+      "select set_movement(gen_random_uuid(),'checked_out')",
+      [],
+    ],
+    [
+      "set_staff",
+      "select set_staff($1,'Test','','admin',true,true)",
+      [ids.user],
+    ],
+    [
+      "provision_invited_staff",
+      "select provision_invited_staff($1,'Test')",
+      [ids.user],
+    ],
+  ];
+  for (const user of ["user", "approver"])
+    for (const [name, sql, args] of calls)
+      await assert.rejects(
+        as(user, sql, args),
+        /Administrator/,
+        `${user} must not call ${name}`,
+      );
+});
+test("staff designation supports explicit removal and live handover", async () => {
+  await as(
+    "admin",
+    "select set_staff($1,'approver','','approver',true,false)",
+    [ids.approver],
+  );
+  assert.equal((await as("approver", "select is_approver() ok"))[0].ok, false);
+  await as("admin", "select set_staff($1,'admin','','admin',true,true)", [
+    ids.admin,
+  ]);
+  assert.equal((await as("admin", "select is_approver() ok"))[0].ok, true);
+  await assert.rejects(
+    as("admin", "select set_staff($1,'admin','','requester',true,false)", [
+      ids.admin,
+    ]),
+    /own admin/,
+  );
+  await assert.rejects(
+    as("admin", "select set_staff($1,'user','','requester',true,true)", [
+      ids.user,
+    ]),
+    /authorized/,
+  );
+  await as("admin", "select set_staff($1,'approver','','approver',true,true)", [
+    ids.approver,
+  ]);
+  assert.equal((await as("admin", "select is_approver() ok"))[0].ok, false);
+});
+test("inventory RPCs reject blank fields, invalid timezone and duplicate codes", async () => {
+  for (const name of ["", "   ", null]) {
+    await assert.rejects(
+      as(
+        "admin",
+        "select save_guesthouse(null,$1,'TEST','Test','Africa/Juba',true,'')",
+        [name],
+      ),
+      /name/,
+    );
+    await assert.rejects(
+      as("admin", "select save_room(null,$1,$2,'TEST','whole_room','',true)", [
+        house,
+        name,
+      ]),
+      /name/,
+    );
+  }
+  await assert.rejects(
+    as(
+      "admin",
+      "select save_guesthouse(null,'Test','TEST','Test','Not/AZone',true,'')",
+    ),
+    /timezone/,
+  );
+  await assert.rejects(
+    as("admin", "select save_room(null,$1,'Test','R1','whole_room','',true)", [
+      house,
+    ]),
+    /unique/,
+  );
+  const b = (await query("select id from rooms where unit_type='break'"))[0].id;
+  await assert.rejects(
+    as(
+      "admin",
+      "select save_room($1,$2,'Break','BREAK','whole_room','',false)",
+      [b, house],
+    ),
+    /protected/,
+  );
+  await assert.rejects(
+    as(
+      "admin",
+      "select save_room($1,gen_random_uuid(),'Moved','R1','whole_room','',true)",
+      [room],
+    ),
+    /history/,
+  );
+});
+test("inactive guesthouse or room cannot be assigned, candidates exclude them", async () => {
+  const q = await submit("user", "2097-01-01", "2097-01-04");
+  await query("update rooms set active=false where id=$1", [room]);
+  assert.ok(
+    !(await as("approver", "select * from candidate_rooms($1)", [q])).some(
+      (r) => r.id === room,
+    ),
+  );
+  await assert.rejects(approve(q), /active room/);
+  await query("update rooms set active=true where id=$1", [room]);
+  await query("update guesthouses set active=false where id=$1", [house]);
+  assert.equal(
+    (
+      await as(
+        "user",
+        "select * from availability($1,'2097-01-01','2097-01-04')",
+        [house],
+      )
+    ).length,
+    0,
+  );
+  await assert.rejects(approve(q), /active room/);
+  await assert.rejects(
+    submit("user", "2097-01-01", "2097-01-04"),
+    /active guesthouse/,
+  );
+  await query("update guesthouses set active=true where id=$1", [house]);
+});
+test("submission retry is idempotent and token cannot be reused by another requester", async () => {
+  const token = "99999999-0000-4000-8000-000000000001";
+  const sql =
+    "select submit_request('break',null,'2097-02-01','2097-02-03','','Rest','',$1,null) id";
+  const a = await as("user", sql, [token]),
+    b = await as("user", sql, [token]);
+  assert.equal(a[0].id, b[0].id);
+  await assert.rejects(as("other", sql, [token]), /unique/);
+});
+test("rejected, cancelled and null decisions cannot create room allocations", async () => {
+  const q = await submit("user", "2097-03-01", "2097-03-03");
+  await assert.rejects(
+    as("approver", "select decide_request($1,null,$2)", [q, room]),
+    /decision/,
+  );
+  await as("approver", "select decide_request($1,false,null,'Declined')", [q]);
+  await assert.rejects(approve(q), /pending/);
+  const c = await submit("user", "2097-03-01", "2097-03-03");
+  await as("user", "select cancel_request($1,'Changed')", [c]);
+  await assert.rejects(approve(c), /pending/);
+  assert.equal(
+    (
+      await query(
+        "select * from room_allocations where request_id in ($1,$2)",
+        [q, c],
+      )
+    ).length,
+    0,
+  );
+});
+test("checked-in, checkout and no-show state transitions release capacity correctly", async () => {
+  const date = (
+    await query("select (now() at time zone 'Africa/Juba')::date::text d")
+  )[0].d;
+  const end = (await query("select ($1::date+2)::text d", [date]))[0].d;
+  const q = await submit("user", date, end);
+  await approve(q, room2);
+  await assert.rejects(
+    as("admin", "select set_movement($1,'checked_out')", [q]),
+    /transition/,
+  );
+  await as("admin", "select set_movement($1,'checked_in')", [q]);
+  await as("admin", "select set_movement($1,'checked_in')", [q]);
+  await assert.rejects(
+    as("user", "select cancel_request($1,'Cancel')", [q]),
+    /active or completed/,
+  );
+  await as("admin", "select set_movement($1,'checked_out')", [q]);
+  assert.equal(
+    (
+      await query(
+        "select * from occupancy_slots s join room_allocations a on a.id=s.allocation_id where a.request_id=$1",
+        [q],
+      )
+    ).length,
+    0,
+  );
+  const no = await submit("user", date, end);
+  await approve(no, room2);
+  await as("admin", "select set_movement($1,'no_show')", [no]);
+  assert.equal(
+    (
+      await query(
+        "select * from occupancy_slots s join room_allocations a on a.id=s.allocation_id where a.request_id=$1",
+        [no],
+      )
+    ).length,
+    0,
+  );
+});
+test("future check-in, no-show and Break completion are rejected", async () => {
+  const q = await submit("user", "2097-04-01", "2097-04-03");
+  await approve(q, room2);
+  for (const m of ["checked_in", "no_show", "invalid"])
+    await assert.rejects(
+      as("admin", "select set_movement($1,$2)", [q, m]),
+      /within|transition/,
+    );
+  const b = await submit("user", "2097-04-01", "2097-04-03", "break");
+  await approve(b, null);
+  await assert.rejects(
+    as("admin", "select set_movement($1,'break_completed')", [b]),
+    /transition/,
+  );
+  await as("user", "select cancel_request($1,'Test cleanup')", [q]);
+  await as("user", "select cancel_request($1,'Test cleanup')", [b]);
+});
+test("replacement rejection and duplicate change preserve original booking", async () => {
+  const old = await submit("user", "2097-05-01", "2097-05-04");
+  await approve(old, room2);
+  const next = await submit(
+    "user",
+    "2097-05-02",
+    "2097-05-06",
+    "accommodation",
+    old,
+  );
+  await assert.rejects(
+    submit("user", "2097-05-02", "2097-05-06", "accommodation", old),
+    /already pending/,
+  );
+  await as("approver", "select decide_request($1,false,null,'Cannot change')", [
+    next,
+  ]);
+  assert.equal(
+    (await query("select status from requests where id=$1", [old]))[0].status,
+    "confirmed",
+  );
+  assert.equal(
+    (
+      await query(
+        "select count(*)::int n from occupancy_slots s join room_allocations a on a.id=s.allocation_id where a.request_id=$1",
+        [old],
+      )
+    )[0].n,
+    1,
+  );
+  await as("user", "select cancel_request($1,'Cleanup')", [old]);
+});
+test("availability agrees with an independent interval oracle for 120 date ranges", async () => {
+  const h = (
+    await query(
+      "insert into guesthouses(name,code,destination)values('Oracle','ORACLE','Test')returning id",
+    )
+  )[0].id;
+  const ids2 = [];
+  for (let i = 0; i < 4; i++)
+    ids2.push(
+      (
+        await query(
+          "insert into rooms(name,code,guesthouse_id)values($1,$2,$3)returning id",
+          ["Oracle " + i, "ORACLE-" + i, h],
+        )
+      )[0].id,
+    );
+  const blocks = [
+    [0, 2, 6],
+    [0, 10, 14],
+    [1, 0, 3],
+    [1, 8, 12],
+    [2, 5, 10],
+    [3, 14, 18],
+  ];
+  const d = (n) =>
+    new Date(Date.UTC(2098, 0, 1 + n)).toISOString().slice(0, 10);
+  for (const [r, a, b] of blocks)
+    await as("admin", "select create_block($1,$2,$3,'Oracle')", [
+      ids2[r],
+      d(a),
+      d(b),
+    ]);
+  for (let i = 0; i < 120; i++) {
+    const a = i % 20,
+      b = a + 1 + (i % 7);
+    const expected = ids2.filter(
+      (_, r) => !blocks.some(([rr, x, y]) => rr === r && a < y && b > x),
+    ).length;
+    const actual = await as("user", "select * from availability($1,$2,$3)", [
+      h,
+      d(a),
+      d(b),
+    ]);
+    assert.equal(
+      Number(actual[0].available_count),
+      expected,
+      `${d(a)} to ${d(b)}`,
+    );
+  }
+});
+test("all final allocations, slots and decisions satisfy integrity invariants", async () => {
+  const checks = [
+    "select * from occupancy_slots a join occupancy_slots b on a.id<b.id and a.room_id=b.room_id and a.stay&&b.stay",
+    "select q.id from requests q where status='confirmed' and not exists(select 1 from room_allocations a where a.request_id=q.id and a.active)",
+    "select a.id from room_allocations a join requests q on q.id=a.request_id join rooms r on r.id=a.room_id where q.request_type='accommodation' and r.guesthouse_id<>q.guesthouse_id",
+    "select q.id from requests q where status in ('confirmed','rejected') and (decided_at is null or decided_by is null)",
+  ];
+  for (const sql of checks) assert.equal((await query(sql)).length, 0, sql);
+});
