@@ -75,3 +75,8 @@ Restore into an isolated project first. Apply the matching migration version, re
 ## Pilot gate
 
 Begin with one guesthouse and approved test accounts. Verify roles through direct API attempts, actual Auth invitations, current-day movement, simultaneous approvals in the deployed database, mobile usability, and restore. Record the real approver/admin, region, staff list, retention, backups and hosting ownership. Expand to other guesthouses after the pilot passes.
+
+
+## Automatic publication
+
+GitHub Pages automatically publishes the current main commit after the Application checks workflow succeeds. Failed checks, pull-request branches and stale main commits are excluded by the deployment condition. Manual publication remains available; uncheck sample-only when publishing the live application. Database migrations and Edge Functions are separate deployments.
