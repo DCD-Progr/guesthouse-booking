@@ -11,7 +11,9 @@
   font-synthesis: none;
   font-size: 15px;
   line-height: 1.5;
-  --teal: #007f73;
+  --si-red: #ee1313;
+  --primary: #d41217;
+  --primary-hover: #b20f14;
   --border: #d9e1e8;
   --muted: #5c687c;
   --rail: #edf2f7;
@@ -32,14 +34,14 @@ button {
   cursor: pointer;
   border: 1px solid transparent;
   border-radius: 8px;
-  background: var(--teal);
+  background: var(--primary);
   color: white;
   padding: 10px 17px;
   font-weight: 650;
   transition: background 0.15s;
 }
 button:hover {
-  background: #006a60;
+  background: var(--primary-hover);
 }
 button:disabled {
   cursor: not-allowed;
@@ -62,7 +64,7 @@ button.danger {
   color: #a02b27 !important;
 }
 .teal {
-  color: var(--teal);
+  color: #1b6450;
 }
 input,
 select,
@@ -86,7 +88,7 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid #67cabc;
+  outline: 3px solid #ee1313;
   outline-offset: 3px;
 }
 h1,
@@ -134,7 +136,8 @@ small {
 .sidebar {
   width: 216px;
   flex-shrink: 0;
-  background: linear-gradient(#edf2f7, #e6edf4);
+  background: #f7f7f7;
+  border-right: 1px solid #e5e5e5;
   padding: 28px 10px;
   position: fixed;
   inset: 0 auto 0 0;
@@ -152,7 +155,7 @@ small {
   letter-spacing: -0.8px;
 }
 .brand svg {
-  color: var(--teal);
+  color: var(--primary);
 }
 nav {
   display: flex;
@@ -174,10 +177,10 @@ nav {
   font-weight: 550;
 }
 .nav:hover {
-  background: #dce6ed;
+  background: #fce8e8;
 }
 .nav.active {
-  background: var(--teal);
+  background: var(--primary);
   color: white;
 }
 .nav b {
@@ -230,8 +233,8 @@ header {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: #d9f0ec;
-  color: #006b62;
+  background: #fce8e8;
+  color: #b20f14;
   font-weight: 700;
   font-size: 13px;
 }
@@ -376,8 +379,8 @@ td small {
   height: 36px;
   border-radius: 50%;
   flex-shrink: 0;
-  background: #d9f0ec;
-  color: var(--teal);
+  background: #fce8e8;
+  color: var(--primary);
   font-size: 22px;
 }
 .steps p {
@@ -495,7 +498,7 @@ footer {
   margin-bottom: 22px;
 }
 .tabs .active {
-  background: var(--teal);
+  background: var(--primary);
 }
 .modal-backdrop {
   position: fixed;
@@ -941,8 +944,8 @@ hr {
 .metric-icon {
   display: grid;
   place-items: center;
-  background: #e7f6f2;
-  color: #00877b;
+  background: #fce8e8;
+  color: var(--primary);
   min-width: 38px;
   height: 42px;
   border-radius: 9px;
@@ -1369,7 +1372,7 @@ hr {
   font-weight: 400;
 }
 .schedule-table .schedule-today {
-  box-shadow: inset 0 3px #00877b;
+  box-shadow: inset 0 3px var(--si-red);
 }
 .schedule-entry {
   border-radius: 5px;
@@ -1423,4 +1426,29 @@ hr {
     align-items: stretch;
     flex-direction: column;
   }
+}
+
+/* SI red is the brand accent; deeper red keeps white control labels legible. */
+.brand svg {
+  color: var(--si-red);
+}
+.operations-dashboard {
+  background: #f7f7f7;
+}
+.period-summary strong {
+  color: #252525;
+}
+.schedule-table thead th {
+  background: #fceaea;
+  color: #531c20;
+}
+.schedule-table thead tr > :first-child {
+  background: #f6d9da;
+}
+.schedule-table tr > :first-child {
+  background: #faf7f7;
+}
+.staff-schedule-panel,
+.room-schedule-panel {
+  border-top: 3px solid var(--si-red);
 }
