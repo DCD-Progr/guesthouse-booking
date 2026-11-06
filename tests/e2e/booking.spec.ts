@@ -208,7 +208,7 @@ test("operational dashboard filters staff, guesthouses and dates without exposin
     page.getByRole("heading", { name: "Operations overview" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Room status", exact: true }),
+    page.getByRole("heading", { name: "Room schedule", exact: true }),
   ).toBeVisible();
   await page
     .getByLabel("Select staff", { exact: true })
@@ -217,7 +217,22 @@ test("operational dashboard filters staff, guesthouses and dates without exposin
     "Sample traveler",
   );
   await page.getByLabel("Guesthouse", { exact: true }).selectOption("juba");
-  await page.getByLabel("Dashboard date").fill("2090-01-01");
+  await page.getByLabel("Period starts").fill("2090-01-01");
+  const staffGrid = page.getByRole("region", {
+    name: "Two-week staff schedule",
+  });
+  const roomGrid = page.getByRole("region", { name: "Two-week room schedule" });
+  await expect(staffGrid.locator("thead th")).toHaveCount(15);
+  await expect(roomGrid.locator("thead th")).toHaveCount(15);
+  await expect(staffGrid.locator("tbody tr")).toHaveCount(1);
+  await expect(staffGrid.locator("thead")).toContainText("14 Jan");
+  await page.getByRole("button", { name: "Next 14 days" }).click();
+  await expect(page.getByLabel("Period starts")).toHaveValue("2090-01-15");
+  await expect(staffGrid.locator("thead")).toContainText("28 Jan");
+  await expect(roomGrid.locator("thead")).toContainText("28 Jan");
+  await page.getByRole("button", { name: "Previous 14 days" }).click();
+  await expect(page.getByLabel("Period starts")).toHaveValue("2090-01-01");
+
   await expect(
     page.getByRole("heading", { name: "Staff whereabouts" }),
   ).toBeVisible();

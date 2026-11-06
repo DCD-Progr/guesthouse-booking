@@ -1,15 +1,13 @@
-# Dashboard visual review
+# Staff-first fortnight dashboard
 
-The generated concept established a pale slate operations surface, white rounded panels, teal semantic accents, open metric strip, donut distribution, horizontal guesthouse bars, 14-day planning and an attention rail. The actual dashboard was reviewed against that concept using local Chromium screenshots at 1440px desktop and 390px mobile.
+The dashboard replaces the single-date chart layout with the user's Excel-style planning layout. Staff are the primary rows, 14 consecutive dates are columns, and cells contain the guesthouse or Break destination. A secondary room matrix uses the same dates and displays traveler names.
 
-| Comparison | Implementation and review |
-|---|---|
-| Layout | Six metrics, two analysis panels, planning/attention row, movement table retained. Added the explicitly requested staff directory below the charts. |
-| Typography | Existing sans-serif system, strong navy headings and restrained secondary labels retained. |
-| Palette | Teal available, mint reserved, blue occupied, coral closed and slate inactive; occupied blue intentionally improves category distinction. |
-| Charts | Native accessible CSS charts with text legends and actual counts. Concept's illustrative totals replaced by live data. |
-| Sidebar | Existing application navigation retained; role-based items remain hidden where unauthorized. |
-| Copy | Required operational caveats added for planned dates, non-GPS location and refresh behavior. No marketing labels or invented performance claims. |
-| Responsive | Stacked panels and metric pairs on mobile, internal table scrolling, no document overflow. |
+- One start-date control, previous/next fortnight buttons and Today control synchronize both sections.
+- Staff selection applies to the staff matrix; guesthouse selection applies only to rooms so it cannot conceal a staff member's other destinations.
+- Confirmed accommodation, Break and pending plans have distinct text and styling. No plan means unknown location. Pending replacements appear alongside their original confirmed plans.
+- End dates are exclusive. Cancelled, rejected and no-show plans are excluded. Conflicting confirmed assignments remain visible rather than being silently collapsed.
+- These matrices represent current planned booking dates, including completed stays' planned dates. They do not reconstruct historical physical occupancy or claim to track real-time whereabouts. Live booking availability remains authoritative.
+- Sticky staff/room labels and date headers support internally scrolling tables on desktop and mobile.
+- The existing SI application palette and role restrictions are retained. Only admins and the designated approver see these operational matrices.
 
-Intentional differences: actual data replaces concept sample values; the existing app header/sample banner remains; staff directory was added at the user's request; no fake utilization forecast or hardcoded percentage is shown. The design's visual system, primary hierarchy and chart composition are retained.
+Validation: production build, unit tests for date boundaries, Break/pending semantics, room-filter independence, conflicts and closures; desktop/mobile browser checks cover both 14-column grids, synchronized fortnight navigation, staff filtering, requester isolation and document overflow.
