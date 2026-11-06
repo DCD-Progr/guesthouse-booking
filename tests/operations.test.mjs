@@ -100,3 +100,71 @@ test("overdue physical occupancy survives planned departure and house filtering"
   assert.equal(operationsSnapshot(d, "2090-01-05", "x").overdue.length, 0);
   assert.equal(staffLocations(d, "u", "2090-01-05")[0].overdue.length, 1);
 });
+
+const { twoWeekSchedule } = await import("../src/schedule.ts");
+const days = Array.from(
+  { length: 14 },
+  (_, i) => `2090-01-${String(i + 1).padStart(2, "0")}`,
+);
+test("fortnight staff matrix preserves all staff and departure-exclusive locations", () => {
+  const d = base();
+  d.guesthouses[0].name = "Renk Guesthouse";
+  d.requests = [q()];
+  d.room_allocations = [a()];
+  const s = twoWeekSchedule(d, days);
+  assert.equal(s.staff.length, 2);
+  assert.equal(s.staff[0].cells.length, 14);
+  const traveler = s.staff.find((r) => r.person.id === "u");
+  assert.equal(traveler.cells[0].entries[0].label, "Renk Guesthouse");
+  assert.equal(traveler.cells[3].entries.length, 0);
+  assert.equal(s.rooms.length, 2);
+  assert.equal(s.rooms[0].cells[2].requests.length, 1);
+  assert.equal(s.rooms[0].cells[3].requests.length, 0);
+});
+test("pending Break is distinct, needs no allocation and never reserves a room", () => {
+  const d = base();
+  d.requests = [
+    { ...q("break", "break"), status: "pending", destination: "Nairobi" },
+  ];
+  const s = twoWeekSchedule(d, days, "u", "h");
+  assert.equal(s.staff.length, 1);
+  assert.equal(s.staff[0].cells[0].entries[0].label, "Break · Nairobi");
+  assert.equal(s.staff[0].cells[0].entries[0].request.status, "pending");
+  assert.equal(
+    s.rooms.flatMap((r) => r.cells).some((c) => c.requests.length),
+    false,
+  );
+});
+test("room filter cannot hide staff locations; cancelled and no-show plans excluded", () => {
+  const d = base();
+  d.requests = [q(), { ...q("cancel"), status: "cancelled" }, q("no")];
+  d.room_allocations = [
+    a(),
+    a("c", "cancel"),
+    { ...a("n", "no"), movement: "no_show" },
+  ];
+  const s = twoWeekSchedule(d, days, "u", "x");
+  assert.equal(s.rooms.length, 0);
+  assert.equal(s.staff[0].cells[0].entries.length, 1);
+});
+test("closures are exclusive and simultaneous confirmed plans remain visible as conflicts", () => {
+  const d = base();
+  d.requests = [q(), q("bq", "break")];
+  d.room_allocations = [a(), a("b", "bq", "b")];
+  d.room_blocks = [
+    {
+      room_id: "s",
+      active: true,
+      start_date: "2090-01-02",
+      end_date: "2090-01-04",
+    },
+  ];
+  const s = twoWeekSchedule(d, days);
+  assert.equal(
+    s.staff.find((r) => r.person.id === "u").cells[1].conflict,
+    true,
+  );
+  const room = s.rooms.find((r) => r.room.id === "s");
+  assert.equal(room.cells[1].closed, true);
+  assert.equal(room.cells[3].closed, false);
+});
