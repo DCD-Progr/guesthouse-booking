@@ -261,8 +261,8 @@ export function Overview() {
               {schedule.rooms.map(({ room, house: h, cells }) => (
                 <tr key={room.id}>
                   <th scope="row">
-                    <strong>{room.name}</strong>
-                    <small>{h?.name || "Unknown guesthouse"}</small>
+                    <strong>{h?.name || "Unknown guesthouse"}</strong>
+                    <small>{room.name}</small>
                   </th>
                   {cells.map((cell) => (
                     <td
